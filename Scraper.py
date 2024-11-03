@@ -218,11 +218,14 @@ class Scraper:
         with open("brands.txt", "r", encoding="utf8") as f:
             text = '\n'.join(f.readlines())
         divs = self.extract_divs(text, '<div class="a" ')
-        brands = [span_regex.findall(div)[0].replace(
-            '<span>', '').replace('</span>', '') for div in divs]
+        brands = [(
+            span_regex.findall(div)[0].replace(
+                '<span>', '').replace('</span>', ''),
+            span_regex.findall(div)[1].replace(
+                '<span>', '').replace('</span>', '')) for div in divs]
         return brands
 
-    def scrape_pages(self, start=2, end=10, url=None, sleep_time=2):
+    def scrape_pages(self, start=1, end=10, url=None, sleep_time=2):
         # cars_data=get_cars_in_pages(np.linspace(2,150,size,dtype=np.int64))
         # cars_data=get_cars_in_pages_threaded(np.arange(2,10),4)
         if url is None:
@@ -245,24 +248,26 @@ class Scraper:
         # df.to_csv('scraping_results/latest.csv')
         return df
 
-    def scrape_main_pages(self, start=2, end=10, sleep_time=2):
+    def scrape_main_pages(self, start=1, end=10, sleep_time=2):
         print('Extracting Cars')
         df = self.scrape_pages(start, end, self.main_url, sleep_time)
         print("Cars Extracted")
         df.to_csv("scraping_results/latest.csv")
 
-    def scrape_by_brands(self, start=2, end=10, brands=None, sleep_time=2):
+    def scrape_by_brands(self, brands=None, sleep_time=2):
         if brands is None:
             brands = self.get_brands()
         print('Extracting Cars for brand')
-        df = pd.concat([self.scrape_pages(start=start, end=end,
+
+        df = pd.concat([self.scrape_pages(start=1, end=min(count/20+1, 150),
                                           url=self.main_url + "/" + brand.lower().replace(' ', '-'), sleep_time=sleep_time)
-                        for brand in brands])
+                        for brand, count in brands])
         print("Cars Extracted")
         df.to_csv("scraping_results/latest.csv")
 
 
 if __name__ == "__main__":
     scraper = Scraper('https://www.mobile.bg/obiavi/avtomobili-dzhipove')
-    scraper.scrape_by_brands(start=2, end=3, brands=[
-                             'BMW', 'Mercedes-Benz', 'Audi'], sleep_time=1)
+    print(scraper.get_brands())
+    scraper.scrape_by_brands(brands=[
+                            ('BMW', 20), ('Mercedes-Benz', 19), ('Audi', 18)], sleep_time=1)

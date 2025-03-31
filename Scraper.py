@@ -197,6 +197,7 @@ class Scraper:
         # cars_data=get_cars_info(URL)
         cars_data = self.get_cars_info(f'{url}/p-{int(pages[0])}', sleep_time)
         for i in pages[1:]:
+            print("Extracting page:", i)
             cars = self.get_cars_info(f'{url}/p-{int(i)}', sleep_time)
             for j in range(len(cars_data)):
                 cars_data[j] = cars_data[j] + cars[j]
@@ -228,6 +229,7 @@ class Scraper:
     def scrape_pages(self, start=1, end=10, url=None, sleep_time=2):
         # cars_data=get_cars_in_pages(np.linspace(2,150,size,dtype=np.int64))
         # cars_data=get_cars_in_pages_threaded(np.arange(2,10),4)
+        print("Scraping url:", url)
         if url is None:
             url = self.main_url
         cars_data = self.get_cars_in_pages(
@@ -265,9 +267,23 @@ class Scraper:
         print("Cars Extracted")
         df.to_csv("scraping_results/latest.csv")
 
+    def scrape_by_brands_and_page(self, brands=None, start=1, end=150, sleep_time=2):
+        if brands is None:
+            brands = self.get_brands()
+        print('Extracting Cars for brand')
+
+        df = pd.concat([self.scrape_pages(start=start, end=end,
+                                          url=self.main_url + "/" + brand.lower().replace(' ', '-'), sleep_time=sleep_time)
+                        for brand in brands])
+        print("Cars Extracted")
+        df.to_csv("scraping_results/latest.csv")
+
 
 if __name__ == "__main__":
     scraper = Scraper('https://www.mobile.bg/obiavi/avtomobili-dzhipove')
     print(scraper.get_brands())
-    scraper.scrape_by_brands(brands=[
-                            ('BMW', 20), ('Mercedes-Benz', 19), ('Audi', 18)], sleep_time=1)
+    # scraper.scrape_by_brands(brands=[
+    #                        ('BMW', 20), ('Mercedes-Benz', 19), ('Audi', 18)], sleep_time=5)
+
+    scraper.scrape_by_brands_and_page(
+        brands=['BMW'], start=1, end=40, sleep_time=5)

@@ -19,6 +19,8 @@ div_start_plus_end_regex = re.compile('<div>.*?</div>')
 div_remover_regex = re.compile('</{0,1}(div|span|a).*?>')
 span_title_regex = re.compile('<span class="Title">.*?</span>')
 item_div_regex = re.compile('<div.*?>.+')
+picture_regex = re.compile('src=".*"')
+big_picture_regex = re.compile('data-src=".*"')
 
 
 def first(a):
@@ -55,7 +57,7 @@ def clean_nested(source):
 
 def data_cleaner(func):
     def clean_cars_data(self, page_url, sleep_time):
-        cars_models, cars_description, cars_prices, cars_params, individual_urls, infos_labels, infos_details, tech_labels, tech_details, locations, all_titles, all_items, status = func(
+        cars_models, cars_description, cars_prices, cars_params, individual_urls, infos_labels, infos_details, tech_labels, tech_details, locations, all_titles, all_items, status, small_pictures, big_pictures = func(
             self, page_url, sleep_time)
         cars_models_patched = [div_remover_regex.sub(
             '', i).strip() for i in cars_models]
@@ -74,11 +76,13 @@ def data_cleaner(func):
 
         all_titles_patched = clean_nested(all_titles)
         all_items_patched = [clean_nested(i) for i in all_items]
+        small_pictures_patched = clean_nested(small_pictures)
+        big_pictures_patched = clean_nested(big_pictures)
         return [cars_models_patched, cars_description_patched,
                 cars_prices_patched, cars_params_patched,
                 individual_urls, infos_labels_patched,
                 infos_details_patched, tech_labels_patched,
-                tech_details_patched, locations_patched, all_titles_patched, all_items_patched, status]
+                tech_details_patched, locations_patched, all_titles_patched, all_items_patched, status, small_pictures_patched, big_pictures_patched]
     return clean_cars_data
 
 
@@ -122,7 +126,8 @@ class Scraper:
         cars_top = self.extract_divs(r.text, '<div class="item TOP " id="')
         cars_default = self.extract_divs(r.text, '<div class="item  " id="')
         cars_short = self.extract_divs(r.text, '<div id="shortList6"')
-        cars = cars_top+cars_default+cars_short
+        cars_vip = self.extract_divs(r.text, '<div class="item VIP " id="')
+        cars = cars_top+cars_default+cars_short+cars_vip
         cars_params = []
         cars_info = []
         cars_prices = []
@@ -130,7 +135,7 @@ class Scraper:
         individual_urls = []
         locations = []
         status = ['TOP']*len(cars_top)+['Default'] * \
-            len(cars_default)+['SHORT']*len(cars_short)
+            len(cars_default)+['SHORT']*len(cars_short)+['VIP']*len(cars_vip)
         for car in cars:
             cars_params.append(span_regex.findall(car))
             cars_info.append(first(div_class_info_regex.findall(car)))
@@ -167,7 +172,22 @@ class Scraper:
         items = []
         for item in items_htmls:
             items.append(item_div_regex.findall(item))
-        return (info_labels, infos_details, tech_labels, tech_details, titles, items)
+
+        small_picture_divs = self.extract_divs(
+            individual.text, '<div class="smallPicturesGallery')
+        small_pictures = []
+        for picture in small_picture_divs:
+            img = picture_regex.findall(picture)[0][7:-1]
+            small_pictures.append(img)
+
+        big_pictures = []
+        big_pictures_divs = self.extract_divs(
+            individual.text, '<div class="owl-carousel')
+
+        for picture in big_pictures_divs:
+            images = picture_regex.findall(picture)
+            big_pictures += [i[5:-1] for i in images]
+        return (info_labels, infos_details, tech_labels, tech_details, titles, items, small_pictures, big_pictures)
 
     @data_cleaner
     def get_cars_info(self, page_url, sleep_time=2):
@@ -181,9 +201,11 @@ class Scraper:
         tech_details = []
         all_titles = []
         all_items = []
+        all_small_pictures = []
+        all_big_pictures = []
         for url in individual_urls:
             sleep(sleep_time)
-            info_label, info_detail, tech_label, tech_detail, titles, items = self.get_individual_car_cards_info(
+            info_label, info_detail, tech_label, tech_detail, titles, items, small_pictures, big_pictures = self.get_individual_car_cards_info(
                 url)
             infos_labels.append(info_label)
             infos_details.append(info_detail)
@@ -191,7 +213,9 @@ class Scraper:
             tech_details.append(tech_detail)
             all_titles.append(titles)
             all_items.append(items)
-        return [cars_models, cars_description, cars_prices, cars_params, individual_urls, infos_labels, infos_details, tech_labels, tech_details, locations, all_titles, all_items, status]
+            all_small_pictures.append(small_pictures)
+            all_big_pictures.append(big_pictures)
+        return [cars_models, cars_description, cars_prices, cars_params, individual_urls, infos_labels, infos_details, tech_labels, tech_details, locations, all_titles, all_items, status, all_small_pictures, all_big_pictures]
 
     def get_cars_in_pages(self, pages, url, sleep_time=2):
         # cars_data=get_cars_info(URL)
@@ -235,12 +259,12 @@ class Scraper:
         cars_data = self.get_cars_in_pages(
             np.arange(start, end), url, sleep_time)
 
-        all_info_labels = combine_labels(cars_data[-8])
+        all_info_labels = combine_labels(cars_data[-10])
         infos_as_dicts = get_as_dicts(cars_data[5], cars_data[6])
         tech_as_dict = get_as_dicts(cars_data[7], cars_data[8])
         additional_data_for_car = get_as_dicts(cars_data[10], cars_data[11])
         df = pd.DataFrame({'CarModel': cars_data[0], 'CarDescription': cars_data[1], 'CarPrice': cars_data[2],
-                          'Params': cars_data[3], 'URL': cars_data[4], "Location": cars_data[9], 'Status': cars_data[12]})
+                          'Params': cars_data[3], 'URL': cars_data[4], "Location": cars_data[9], 'Status': cars_data[12], "SmallPictures": cars_data[13], "BigPictures": cars_data[14]})
         df = df.join(pd.DataFrame(tech_as_dict), how='outer').join(pd.DataFrame(
             infos_as_dicts), lsuffix='Tech', rsuffix='Info').join(pd.DataFrame(additional_data_for_car))
         for label in all_info_labels:
@@ -276,7 +300,7 @@ class Scraper:
                                           url=self.main_url + "/" + brand.lower().replace(' ', '-'), sleep_time=sleep_time)
                         for brand in brands])
         print("Cars Extracted")
-        df.to_csv("scraping_results/latest.csv")
+        df.to_csv("scraping_results/latest_bmw3.csv")
 
 
 if __name__ == "__main__":
@@ -286,4 +310,4 @@ if __name__ == "__main__":
     #                        ('BMW', 20), ('Mercedes-Benz', 19), ('Audi', 18)], sleep_time=5)
 
     scraper.scrape_by_brands_and_page(
-        brands=['BMW'], start=1, end=40, sleep_time=5)
+        brands=['BMW'], start=40, end=45, sleep_time=3)

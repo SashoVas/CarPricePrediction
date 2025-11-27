@@ -9,7 +9,8 @@ div_regex = re.compile('<div')
 div_close_regex = re.compile('</div>')
 span_regex = re.compile('<span>.*?</span>')
 div_class_info_regex = re.compile('<div class="info">\n.*?\n</div>')
-div_price_regex = re.compile('<div>[0-9 ]+ лв.</div>')
+div_price_regex = re.compile(
+    '(<div class="price ">\n.*?</div>|<div class="price DOWN">\n.*?</div>)')
 div_model_regex = re.compile('<a href=\".*?\" class="title saveSlink">.*?</a>')
 div_location_regex = re.compile('<div class="location">.*?</div>')
 href_regex = re.compile('www.mobile.bg/obiava.*?"')
@@ -127,7 +128,8 @@ class Scraper:
         cars_default = self.extract_divs(r.text, '<div class="item  " id="')
         cars_short = self.extract_divs(r.text, '<div id="shortList6"')
         cars_vip = self.extract_divs(r.text, '<div class="item VIP " id="')
-        cars = cars_top+cars_default+cars_short+cars_vip
+        cars_beset = self.extract_divs(r.text, '<div class="item BEST " id="')
+        cars = cars_top+cars_default+cars_short+cars_vip+cars_beset
         cars_params = []
         cars_info = []
         cars_prices = []
@@ -135,7 +137,8 @@ class Scraper:
         individual_urls = []
         locations = []
         status = ['TOP']*len(cars_top)+['Default'] * \
-            len(cars_default)+['SHORT']*len(cars_short)+['VIP']*len(cars_vip)
+            len(cars_default)+['SHORT']*len(cars_short) + \
+            ['VIP']*len(cars_vip) + ['BEST']*len(cars_beset)
         for car in cars:
             cars_params.append(span_regex.findall(car))
             cars_info.append(first(div_class_info_regex.findall(car)))
@@ -150,6 +153,7 @@ class Scraper:
         return (cars_models, cars_info, cars_prices, cars_params, individual_urls, locations, status)
 
     def get_individual_car_cards_info(self, car_url):
+        print("Extracting car:", car_url)
         individual = requests.get(f'https://{car_url}')
         individual.encoding = individual.apparent_encoding
 
@@ -205,24 +209,38 @@ class Scraper:
         all_big_pictures = []
         for url in individual_urls:
             sleep(sleep_time)
-            info_label, info_detail, tech_label, tech_detail, titles, items, small_pictures, big_pictures = self.get_individual_car_cards_info(
-                url)
-            infos_labels.append(info_label)
-            infos_details.append(info_detail)
-            tech_labels.append(tech_label)
-            tech_details.append(tech_detail)
-            all_titles.append(titles)
-            all_items.append(items)
-            all_small_pictures.append(small_pictures)
-            all_big_pictures.append(big_pictures)
+            try:
+                info_label, info_detail, tech_label, tech_detail, titles, items, small_pictures, big_pictures = self.get_individual_car_cards_info(
+                    url)
+                infos_labels.append(info_label)
+                infos_details.append(info_detail)
+                tech_labels.append(tech_label)
+                tech_details.append(tech_detail)
+                all_titles.append(titles)
+                all_items.append(items)
+                all_small_pictures.append(small_pictures)
+                all_big_pictures.append(big_pictures)
+            except Exception as e:
+                print("Error extracting individual car data:", e)
+                infos_labels.append([])
+                infos_details.append([])
+                tech_labels.append([])
+                tech_details.append([])
+                all_titles.append([])
+                all_items.append([])
+                all_small_pictures.append([])
+                all_big_pictures.append([])
+                continue
         return [cars_models, cars_description, cars_prices, cars_params, individual_urls, infos_labels, infos_details, tech_labels, tech_details, locations, all_titles, all_items, status, all_small_pictures, all_big_pictures]
 
-    def get_cars_in_pages(self, pages, url, sleep_time=2):
+    def get_cars_in_pages(self, pages, url, sleep_time=2, low_price=0, high_price=0):
         # cars_data=get_cars_info(URL)
-        cars_data = self.get_cars_info(f'{url}/p-{int(pages[0])}', sleep_time)
+        cars_data = self.get_cars_info(
+            f'{url}/p-{int(pages[0])}' + f'?price={low_price}&price1={high_price}' if low_price > 0 or high_price > 0 else '', sleep_time)
         for i in pages[1:]:
             print("Extracting page:", i)
-            cars = self.get_cars_info(f'{url}/p-{int(i)}', sleep_time)
+            cars = self.get_cars_info(
+                f'{url}/p-{int(i)}' + f'?price={low_price}&price1={high_price}' if low_price > 0 or high_price > 0 else '', sleep_time)
             for j in range(len(cars_data)):
                 cars_data[j] = cars_data[j] + cars[j]
         return cars_data
@@ -250,14 +268,14 @@ class Scraper:
                 '<span>', '').replace('</span>', '')) for div in divs]
         return brands
 
-    def scrape_pages(self, start=1, end=10, url=None, sleep_time=2):
+    def scrape_pages(self, start=1, end=10, url=None, sleep_time=2, low_price=0, high_price=0, results_file="scraping_results/latest.csv"):
         # cars_data=get_cars_in_pages(np.linspace(2,150,size,dtype=np.int64))
         # cars_data=get_cars_in_pages_threaded(np.arange(2,10),4)
         print("Scraping url:", url)
         if url is None:
             url = self.main_url
         cars_data = self.get_cars_in_pages(
-            np.arange(start, end), url, sleep_time)
+            np.arange(start, end), url, sleep_time, low_price=low_price, high_price=high_price)
 
         all_info_labels = combine_labels(cars_data[-10])
         infos_as_dicts = get_as_dicts(cars_data[5], cars_data[6])
@@ -271,16 +289,17 @@ class Scraper:
             df_copy = df.dropna(subset=[f"{label}Tech", f"{label}Info"])
             if (df_copy[f"{label}Tech"] != df_copy[f"{label}Info"]).sum():
                 print(label)
-        # df.to_csv('scraping_results/latest.csv')
+        # df.to_csv(results_file)
         return df
 
-    def scrape_main_pages(self, start=1, end=10, sleep_time=2):
+    def scrape_main_pages(self, start=1, end=10, sleep_time=2, results_file="scraping_results/latest.csv", low_price=0, high_price=0):
         print('Extracting Cars')
-        df = self.scrape_pages(start, end, self.main_url, sleep_time)
+        df = self.scrape_pages(
+            start, end, self.main_url, sleep_time, low_price=low_price, high_price=high_price)
         print("Cars Extracted")
-        df.to_csv("scraping_results/latest.csv")
+        df.to_csv(results_file)
 
-    def scrape_by_brands(self, brands=None, sleep_time=2):
+    def scrape_by_brands(self, brands=None, sleep_time=2, results_file="scraping_results/latest.csv"):
         if brands is None:
             brands = self.get_brands()
         print('Extracting Cars for brand')
@@ -289,9 +308,9 @@ class Scraper:
                                           url=self.main_url + "/" + brand.lower().replace(' ', '-'), sleep_time=sleep_time)
                         for brand, count in brands])
         print("Cars Extracted")
-        df.to_csv("scraping_results/latest.csv")
+        df.to_csv(results_file)
 
-    def scrape_by_brands_and_page(self, brands=None, start=1, end=150, sleep_time=2):
+    def scrape_by_brands_and_page(self, brands=None, start=1, end=150, sleep_time=2, results_file="scraping_results/latest_bmw3.csv"):
         if brands is None:
             brands = self.get_brands()
         print('Extracting Cars for brand')
@@ -300,7 +319,7 @@ class Scraper:
                                           url=self.main_url + "/" + brand.lower().replace(' ', '-'), sleep_time=sleep_time)
                         for brand in brands])
         print("Cars Extracted")
-        df.to_csv("scraping_results/latest_bmw3.csv")
+        df.to_csv(results_file)
 
 
 if __name__ == "__main__":
@@ -309,5 +328,8 @@ if __name__ == "__main__":
     # scraper.scrape_by_brands(brands=[
     #                        ('BMW', 20), ('Mercedes-Benz', 19), ('Audi', 18)], sleep_time=5)
 
-    scraper.scrape_by_brands_and_page(
-        brands=['BMW'], start=40, end=45, sleep_time=3)
+    # scraper.scrape_by_brands_and_page(
+    #    brands=['BMW'], start=1, end=100, sleep_time=2, results_file="scraping_results/latest_bmw_big.csv")
+
+    scraper.scrape_main_pages(start=1, end=150, sleep_time=2,
+                              results_file="scraping_results/latest_180000_1000000.csv", low_price=180001, high_price=1000000)

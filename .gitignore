@@ -162,3 +162,4 @@ cython_debug/
 #.idea/
 
 /scraping_results
+/processed_data

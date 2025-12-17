@@ -332,4 +332,4 @@ if __name__ == "__main__":
     #    brands=['BMW'], start=1, end=100, sleep_time=2, results_file="scraping_results/latest_bmw_big.csv")
 
     scraper.scrape_main_pages(start=1, end=150, sleep_time=2,
-                              results_file="scraping_results/latest_180000_1000000.csv", low_price=180001, high_price=1000000)
+                              results_file="scraping_results/latest_1000000_10000000.csv", low_price=1000000, high_price=10000000)

@@ -164,3 +164,4 @@ cython_debug/
 /scraping_results
 /processed_data
 /linear_models
+/tree_models
